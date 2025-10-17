@@ -1,0 +1,229 @@
+1. hive sql（初始化）：
+
+insert overwrite table dws.T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR
+select 
+date_format(current_timestamp, 'yyyyMMddHHmmss') as ETL_TIME
+,s.SALE_DATE as SELL_DATE
+,da.flt_week as SELL_WEEK
+,s.SALE_MONTH as SELL_YM
+,SUBSTR(s.SALE_MONTH,0,4) as SELL_Y
+,s.TKT_VOYAGE as VOYAGE
+--,ag.AGENT_BUS_DEP_3_CODE as BUS_DEP
+,'' as BUS_DEP
+,s.TKT_AIR_NAME as ISS_AIR_NAME
+,s.VOYAGE_TYPE as DAF_MARK
+,s.DIRDIS as DIRDIS_MARK
+,s.ABROAD_AIRPORT_COUNTRY as ABROAD_AIRPORT_AREA
+,s.IS_LOCPS_AIRPORT_DEP as IS_LOCPS_AIRPORT_DEP
+,s.IS_LOCPS_AIRPORT as IS_LOCPS_AIRPORT
+,CASE WHEN s.GRP_FIT_MARK='G' then '团队' else '散客' end as TEAM_MARK
+,s.VOYAGE_MARK as VOYAGE_MARK
+,s.CHN_AREA as CHN_AREA
+,s.CHN_NATURE as CHN_NATURE
+,s.CHN_DETAIL1 as CHN_DETAIL_1
+,s.CHN_DETAIL2 as CHN_DETAIL_2
+,sum(s.INCOME_VOYAGE) as SALE_AMT
+,count(distinct s.TKT_NUM) as SALE_NUM
+,max_pt('dwd','T_DWD_SA_INTERNAT_TICKING_FLYR_FACT')
+from dwd.T_DWD_SA_INTERNAT_TICKING_FLYR_FACT s
+left join dim.T_DIM_DATE da on s.SALE_DATE =da.pk_id 
+--left join dim.t_dim_agent ag on s.fk_tkt_agent_id =ag.pk_id and ag.dt=max_pt('dim','t_dim_agent')
+where s.dt=max_pt('dwd','T_DWD_SA_INTERNAT_TICKING_FLYR_FACT')
+group by 
+s.SALE_DATE
+,da.flt_week
+,s.SALE_MONTH
+,s.TKT_VOYAGE
+--,ag.AGENT_BUS_DEP_3_CODE
+,s.TKT_AIR_NAME
+,s.VOYAGE_TYPE
+,s.DIRDIS
+,s.ABROAD_AIRPORT_COUNTRY
+,s.IS_LOCPS_AIRPORT_DEP
+,s.IS_LOCPS_AIRPORT
+,s.GRP_FIT_MARK
+,s.VOYAGE_MARK
+,s.CHN_AREA
+,s.CHN_NATURE
+,s.CHN_DETAIL1
+,s.CHN_DETAIL2
+
+
+----------------------------
+2. hive sql(增量)：
+
+insert overwrite table dws.T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR partition(dt='${mt1}')
+select 
+date_format(current_timestamp, 'yyyyMMddHHmmss') as ETL_TIME
+,s.SALE_DATE as SELL_DATE
+,da.flt_week as SELL_WEEK
+,s.SALE_MONTH as SELL_YM
+,SUBSTR(s.SALE_MONTH,0,4) as SELL_Y
+,s.TKT_VOYAGE as VOYAGE
+--,ag.AGENT_BUS_DEP_3_CODE as BUS_DEP
+,'' as BUS_DEP
+,s.TKT_AIR_NAME as ISS_AIR_NAME
+,s.VOYAGE_TYPE as DAF_MARK
+,s.DIRDIS as DIRDIS_MARK
+,s.ABROAD_AIRPORT_COUNTRY as ABROAD_AIRPORT_AREA
+,s.IS_LOCPS_AIRPORT_DEP as IS_LOCPS_AIRPORT_DEP
+,s.IS_LOCPS_AIRPORT as IS_LOCPS_AIRPORT
+,CASE WHEN s.GRP_FIT_MARK='G' then '团队' else '散客' end as TEAM_MARK
+,s.VOYAGE_MARK as VOYAGE_MARK
+,s.CHN_AREA as CHN_AREA
+,s.CHN_NATURE as CHN_NATURE
+,s.CHN_DETAIL1 as CHN_DETAIL_1
+,s.CHN_DETAIL2 as CHN_DETAIL_2
+,sum(s.INCOME_VOYAGE) as SALE_AMT
+,count(distinct s.TKT_NUM) as SALE_NUM
+,max_pt('dwd','T_DWD_SA_INTERNAT_TICKING_FLYR_FACT')
+from dwd.T_DWD_SA_INTERNAT_TICKING_FLYR_FACT s
+left join dim.T_DIM_DATE da on s.SALE_DATE =da.pk_id 
+--left join dim.t_dim_agent ag on s.fk_tkt_agent_id =ag.pk_id and ag.dt=max_pt('dim','t_dim_agent')
+where s.dt='${mt1}' and s.DATA_MONTH<='${mt1}'
+    AND s.DATA_MONTH>=date_format(add_months(trunc(from_unixtime(unix_timestamp('${mt1}','yyyyMM'),'yyyy-MM'),'MM'),-1),'yyyyMM');
+group by 
+s.SALE_DATE
+,da.flt_week
+,s.SALE_MONTH
+,s.TKT_VOYAGE
+--,ag.AGENT_BUS_DEP_3_CODE
+,s.TKT_AIR_NAME
+,s.VOYAGE_TYPE
+,s.DIRDIS
+,s.ABROAD_AIRPORT_COUNTRY
+,s.IS_LOCPS_AIRPORT_DEP
+,s.IS_LOCPS_AIRPORT
+,s.GRP_FIT_MARK
+,s.VOYAGE_MARK
+,s.CHN_AREA
+,s.CHN_NATURE
+,s.CHN_DETAIL1
+,s.CHN_DETAIL2
+
+
+----------------------------
+3. hive中间临时文件（初始化）：
+
+SET hive.exec.compress.output=true;
+SET mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.SnappyCodec;
+SET mapreduce.output.fileoutputformat.compress.type=BLOCK;
+INSERT OVERWRITE DIRECTORY '/tmp/hive/hive/T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR'
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+SELECT
+  date_format(current_timestamp, 'yyyyMMddHHmmss')  AS ETL_TIME,
+  dt                                                AS DATA_MONTH,
+  from_unixtime(unix_timestamp(SELL_DATE,'yyyyMMdd'),'yyyy-MM-dd') AS SELL_DATE,
+  SELL_WEEK,
+  SELL_YM,
+  SELL_Y,
+  VOYAGE,
+  BUS_DEP,
+  ISS_AIR_NAME,
+  DAF_MARK,
+  DIRDIS_MARK,
+  ABROAD_AIRPORT_AREA,
+  IS_LOCPS_AIRPORT_DEP,
+  IS_LOCPS_AIRPORT,
+  TEAM_MARK,
+  VOYAGE_MARK,
+  CHN_AREA,
+  CHN_NATURE,
+  CHN_DETAIL_1,
+  CHN_DETAIL_2,
+  SALE_AMT,
+  SALE_NUM
+FROM DWS.T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR	
+
+----------------------------
+4. hive中间临时文件(增量)：
+
+SET hive.exec.compress.output=true;
+SET mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.SnappyCodec;
+SET mapreduce.output.fileoutputformat.compress.type=BLOCK;
+INSERT OVERWRITE DIRECTORY '/tmp/hive/hive/T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR'
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+SELECT
+  date_format(current_timestamp, 'yyyyMMddHHmmss')  AS ETL_TIME,
+  dt                                                AS DATA_MONTH,
+  from_unixtime(unix_timestamp(SELL_DATE,'yyyyMMdd'),'yyyy-MM-dd') AS SELL_DATE,
+  SELL_WEEK,
+  SELL_YM,
+  SELL_Y,
+  VOYAGE,
+  BUS_DEP,
+  ISS_AIR_NAME,
+  DAF_MARK,
+  DIRDIS_MARK,
+  ABROAD_AIRPORT_AREA,
+  IS_LOCPS_AIRPORT_DEP,
+  IS_LOCPS_AIRPORT,
+  TEAM_MARK,
+  VOYAGE_MARK,
+  CHN_AREA,
+  CHN_NATURE,
+  CHN_DETAIL_1,
+  CHN_DETAIL_2,
+  SALE_AMT,
+  SALE_NUM
+FROM DWS.T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR
+WHERE dt = '${mt1}' and DATA_MONTH<='${mt1}'
+    AND DATA_MONTH>=date_format(add_months(trunc(from_unixtime(unix_timestamp('${mt1}','yyyyMM'),'yyyy-MM'),'MM'),-1),'yyyyMM');
+
+
+----------------------------
+5. 创建达梦中间表（初始化）：
+
+p_create_mid_app('T_APP_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR',null);
+
+
+----------------------------
+6. 创建达梦中间表(增量)：
+
+p_create_mid_app('T_APP_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR',null);
+
+
+----------------------------
+7. 数据载入达梦临时表（初始化）：
+
+/usr/bch/3.3.0/sqoop/bin/sqoop export \
+--options-file /usr/bch/3.3.0/sqoop/conf/dm8_pro.props \
+--table MID_T_APP_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR \
+--export-dir /tmp/hive/hive/T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR \
+--batch \
+--num-mappers 8
+
+
+----------------------------
+8. 数据载入达梦临时表（增量）：
+
+/usr/bch/3.3.0/sqoop/bin/sqoop export \
+--options-file /usr/bch/3.3.0/sqoop/conf/dm8_pro.props \
+--table MID_T_APP_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR \
+--export-dir /tmp/hive/hive/T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR \
+--batch \
+--num-mappers 8
+
+
+----------------------------
+9. 替换达梦目标表（初始化）：
+
+p_replace_tgttable('T_APP_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR','DF','DATA_MONTH',NULL,NULL,null);
+
+----------------------------
+10. 替换达梦目标表（增量）：
+p_replace_tgttable('T_APP_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR','DI','DATA_MONTH','${mt1}',1,null);
+
+----------------------------
+11. 删除hive中间临时文件（初始化）：
+
+hdfs dfs -rm -r -f /tmp/hive/hive/T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR
+
+----------------------------
+12. 删除hive中间临时文件（增量）：
+
+hdfs dfs -rm -r -f /tmp/hive/hive/T_DWS_INTERNAT_CHN_STRUCT_ANALYSIS_FLYR
+
+----------------------------
